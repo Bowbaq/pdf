@@ -535,6 +535,10 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 					showText(x.RawString())
 				}
 			}
+		case "Tm":
+			if currentX := args[4].Float64(); currentX == 0 {
+				textBuilder.WriteString("\n")
+			}
 		}
 	})
 	return textBuilder.String(), nil
