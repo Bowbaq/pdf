@@ -61,10 +61,14 @@ func (r *Reader) NumPage() int {
 
 // GetPlainText returns all the text in the PDF file
 func (r *Reader) GetPlainText() (reader io.Reader, err error) {
-	pages := r.NumPage()
-	var buf bytes.Buffer
-	fonts := make(map[string]*Font)
-	for i := 1; i <= pages; i++ {
+	var (
+		pageCount = r.NumPage()
+
+		fonts = make(map[string]*Font)
+		buf   bytes.Buffer
+	)
+
+	for i := 1; i <= pageCount; i++ {
 		p := r.Page(i)
 		for _, name := range p.Fonts() { // cache fonts so we don't continually parse charmap
 			if _, ok := fonts[name]; !ok {
@@ -72,12 +76,15 @@ func (r *Reader) GetPlainText() (reader io.Reader, err error) {
 				fonts[name] = &f
 			}
 		}
+
 		text, err := p.GetPlainText(fonts)
 		if err != nil {
 			return &bytes.Buffer{}, err
 		}
+
 		buf.WriteString(text)
 	}
+
 	return &buf, nil
 }
 
@@ -491,6 +498,34 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 		}
 	}
 
+	// Detect left margin
+	xCounts := map[float64]int{}
+	Interpret(strm, func(stk *Stack, op string) {
+		n := stk.Len()
+		args := make([]Value, n)
+		for i := n - 1; i >= 0; i-- {
+			args[i] = stk.Pop()
+		}
+
+		switch op {
+		default:
+			return
+		case "Tm":
+			xCounts[args[4].Float64()]++
+		}
+	})
+
+	var (
+		detectedMargin = 1000.0
+		maxCount       = 0
+	)
+	for xValue, count := range xCounts {
+		if count > maxCount {
+			maxCount = count
+			detectedMargin = xValue
+		}
+	}
+
 	Interpret(strm, func(stk *Stack, op string) {
 		n := stk.Len()
 		args := make([]Value, n)
@@ -536,11 +571,13 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 				}
 			}
 		case "Tm":
-			if currentX := args[4].Float64(); currentX == 0 {
+			// Best effort newline detection. If X returns to the calculated left margin, insert a new line
+			if currentX := args[4].Float64(); currentX <= detectedMargin {
 				textBuilder.WriteString("\n")
 			}
 		}
 	})
+
 	return textBuilder.String(), nil
 }
 
