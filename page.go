@@ -498,33 +498,7 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 		}
 	}
 
-	// Detect left margin
-	xCounts := map[float64]int{}
-	Interpret(strm, func(stk *Stack, op string) {
-		n := stk.Len()
-		args := make([]Value, n)
-		for i := n - 1; i >= 0; i-- {
-			args[i] = stk.Pop()
-		}
-
-		switch op {
-		default:
-			return
-		case "Tm":
-			xCounts[args[4].Float64()]++
-		}
-	})
-
-	var (
-		detectedMargin = 1000.0
-		maxCount       = 0
-	)
-	for xValue, count := range xCounts {
-		if count > maxCount {
-			maxCount = count
-			detectedMargin = xValue
-		}
-	}
+	var xs []float64
 
 	Interpret(strm, func(stk *Stack, op string) {
 		n := stk.Len()
@@ -536,6 +510,8 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 		switch op {
 		default:
 			return
+		case "ET": // end text
+			textBuilder.WriteString(" ")
 		case "T*": // move to start of next line
 			showText("\n")
 		case "Tf": // set text font and size
@@ -571,10 +547,11 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 				}
 			}
 		case "Tm":
-			// Best effort newline detection. If X returns to the calculated left margin, insert a new line
-			if currentX := args[4].Float64(); currentX <= detectedMargin {
+			if currentX := args[4].Float64(); len(xs) > 0 && currentX <= xs[len(xs)-1] {
 				textBuilder.WriteString("\n")
 			}
+
+			xs = append(xs, args[4].Float64())
 		}
 	})
 
