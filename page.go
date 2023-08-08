@@ -555,6 +555,10 @@ func (p Page) GetPlainText(fonts map[string]*Font) (result string, err error) {
 		}
 	})
 
+	if !strings.HasSuffix(textBuilder.String(), "\n") {
+		textBuilder.WriteString("\n")
+	}
+
 	return textBuilder.String(), nil
 }
 
